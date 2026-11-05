@@ -62,9 +62,10 @@ pub fn ease(kind: u32, t: f32) -> f32 {
                 1.0 - 2.0 * inv * inv
             }
         }
+        // back.out: overshoots past the target near the end, never before the start
         7 => {
             let c = 1.70158;
-            1.0 + (c + 1.0) * inv * inv * inv - c * inv * inv
+            1.0 - (c + 1.0) * inv * inv * inv + c * inv * inv
         }
         _ => t,
     }
