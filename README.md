@@ -70,6 +70,7 @@ took the build from 104 KB to 4.6 KB.
 ## Pitfalls
 
 - Sequential tweens on one element: both write during their delay, pinning the element at the later tween's from-value unless the `hold` flag is set (do not touch the element until delay is over).
+- Easing-endpoint checking: formulas must be checked at both ends (`ease(kind, 0) == 0` and `ease(kind, 1) == 1`); inverted or malformed curves can overshoot at t=0 (e.g. `back.out` returning 2.0 at t=0).
 
 ## Consumers
 
