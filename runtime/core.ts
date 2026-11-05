@@ -83,9 +83,13 @@ function decode(b64: string): Uint8Array {
   return bytes;
 }
 
+/**
+ * A WebAssembly instance's exports object is sealed, so the views are copied
+ * onto a fresh object instead of assigned onto it (that throws in strict mode).
+ */
 function wrap(exports: Exports): MotionCore {
   const buffer = exports.memory.buffer;
-  return Object.assign(exports, {
+  return Object.assign({} as Exports, exports, {
     tweenOut: new Float32Array(buffer, exports.tween_ptr(), exports.tween_slots() * exports.tween_stride()),
     tweenStride: exports.tween_stride(),
     motionOut: new Float32Array(buffer, exports.motion_ptr(), exports.motion_len()),
@@ -103,12 +107,16 @@ export function loadCore(options: { disabled?: boolean } = {}): Promise<MotionCo
   loading = (async () => {
     if (options.disabled || typeof WebAssembly !== 'object') return null;
     try {
-      const { instance } = await WebAssembly.instantiate(decode(MOTION_CORE_WASM), {});
-      const exports = instance.exports as unknown as Exports;
+      const source = (await WebAssembly.instantiate(
+        decode(MOTION_CORE_WASM) as BufferSource,
+        {},
+      )) as WebAssembly.WebAssemblyInstantiatedSource;
+      const exports = source.instance.exports as unknown as Exports;
       if (exports.version() !== CORE_VERSION) return null;
       core = wrap(exports);
       return core;
-    } catch {
+    } catch (error) {
+      console.warn('motion-core: falling back to no animation', error);
       return null;
     }
   })();

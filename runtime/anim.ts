@@ -28,6 +28,8 @@ export interface Opts {
   delay?: number;
   ease?: Ease;
   onComplete?: () => void;
+  /** Đợi hết delay mới chạm vào phần tử (cho chuỗi tween nối tiếp nhau). */
+  hold?: boolean;
 }
 
 type State = Record<string, number>;
@@ -53,6 +55,7 @@ interface Entry {
   el: HTMLElement;
   props: string[];
   onComplete?: (() => void) | undefined;
+  hold: boolean;
 }
 
 const states = new WeakMap<HTMLElement, State>();
@@ -88,24 +91,51 @@ function transformOf(s: State): string {
   return t;
 }
 
+/**
+ * Written values per element. A style write that changes nothing still costs a
+ * style recalculation, so every property is compared before it is written.
+ */
+const written = new WeakMap<HTMLElement, { transform: string; opacity: string; clip: string }>();
+
+function writtenOf(el: HTMLElement): { transform: string; opacity: string; clip: string } {
+  let w = written.get(el);
+  if (!w) {
+    w = { transform: '', opacity: '', clip: '' };
+    written.set(el, w);
+  }
+  return w;
+}
+
 function flush(el: HTMLElement, props: string[]): void {
   const s = stateOf(el);
+  const w = writtenOf(el);
   let moved = false;
   for (const prop of props) {
     if (TRANSFORM.has(prop)) {
       moved = true;
     } else if (prop === 'opacity') {
-      el.style.opacity = String(s.opacity);
+      const value = (s.opacity ?? 1).toFixed(3);
+      if (value !== w.opacity) {
+        w.opacity = value;
+        el.style.opacity = value;
+      }
     } else if (prop === 'clip') {
       const c = s.clip ?? 0;
-      el.style.clipPath = c > 0.001 ? `inset(${c}% ${c}% ${c}% ${c}% round 2px)` : '';
+      const value = c > 0.001 ? `inset(${c.toFixed(2)}% ${c.toFixed(2)}% ${c.toFixed(2)}% ${c.toFixed(2)}% round 2px)` : '';
+      if (value !== w.clip) {
+        w.clip = value;
+        el.style.clipPath = value;
+      }
     } else if (prop === 'volume') {
       (el as HTMLAudioElement).volume = Math.min(1, Math.max(0, s.volume ?? 0));
     }
   }
   if (moved) {
     const t = transformOf(s);
-    el.style.transform = t;
+    if (t !== w.transform) {
+      w.transform = t;
+      el.style.transform = t;
+    }
   }
 }
 
@@ -164,10 +194,10 @@ export function fromTo(el: HTMLElement, from: Props, to: Props, opts: Opts = {})
     const a = (from as State)[prop] ?? read(el, prop);
     const b = (to as State)[prop] ?? read(el, prop);
     core.tween_channel(id, i, a, b);
-    s[prop] = a;
+    if (!opts.hold) s[prop] = a;
   }
-  flush(el, props);
-  entries.set(id, { el, props, onComplete: opts.onComplete });
+  if (!opts.hold) flush(el, props);
+  entries.set(id, { el, props, onComplete: opts.onComplete, hold: opts.hold === true });
   track(el, id);
   wake();
 }
@@ -194,7 +224,7 @@ export function after(delay: number, cb: () => void): void {
     cb();
     return;
   }
-  entries.set(id, { el: document.documentElement, props: [], onComplete: cb });
+  entries.set(id, { el: document.documentElement, props: [], onComplete: cb, hold: true });
   wake();
 }
 
@@ -218,6 +248,10 @@ function loop(now: number): void {
     for (const [id, entry] of entries) {
       const base = id * stride;
       const status = out[base + stride - 1]!;
+      if (status === 1 && entry.hold) {
+        need = true;
+        continue;
+      }
       const s = stateOf(entry.el);
       for (let i = 0; i < entry.props.length; i += 1) s[entry.props[i]!] = out[base + i]!;
       if (entry.props.length) flush(entry.el, entry.props);
