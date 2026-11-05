@@ -67,6 +67,10 @@ runtime/anim.ts       DOM writer: style strings, one rAF loop
 Every static starts at zero so the module carries no data segment: that alone
 took the build from 104 KB to 4.6 KB.
 
+## Pitfalls
+
+- Sequential tweens on one element: both write during their delay, pinning the element at the later tween's from-value unless the `hold` flag is set (do not touch the element until delay is over).
+
 ## Consumers
 
 - [wedding-lan-thanh](https://github.com/hoanglan9569/wedding-lan-thanh) vendors
