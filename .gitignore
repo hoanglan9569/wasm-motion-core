@@ -1,0 +1,4 @@
+node_modules/
+crate/target/
+.DS_Store
+*.local
